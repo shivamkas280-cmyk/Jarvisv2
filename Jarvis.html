@@ -1,0 +1,241 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Universal AI Chat</title>
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<script src="https://cdn.tailwindcss.com"></script>
+</head>
+
+<body class="bg-gray-100 h-screen flex">
+
+<!-- Sidebar -->
+<div class="w-64 bg-gray-900 text-white flex flex-col">
+<div class="p-4 font-bold text-lg border-b border-gray-700">
+Universal AI
+</div>
+
+<button id="newChat" class="m-3 bg-blue-600 p-2 rounded">
++ New Chat
+</button>
+
+<div id="history" class="flex-1 overflow-y-auto p-2 space-y-2"></div>
+
+<button id="openSettings" class="m-3 bg-gray-700 p-2 rounded">
+⚙ Settings
+</button>
+</div>
+
+<!-- Chat Area -->
+<div class="flex-1 flex flex-col">
+
+<div id="chat" class="flex-1 overflow-y-auto p-6 space-y-4"></div>
+
+<div class="p-4 bg-white border-t flex gap-2">
+<input id="messageInput" placeholder="Ask anything..."
+class="flex-1 border rounded p-2">
+<button id="sendBtn" class="bg-blue-600 text-white px-4 rounded">
+Send
+</button>
+</div>
+
+</div>
+
+<!-- Settings Modal -->
+<div id="settingsModal" class="fixed inset-0 bg-black bg-opacity-40 hidden items-center justify-center">
+
+<div class="bg-white p-6 rounded w-96 space-y-4">
+
+<h2 class="text-xl font-bold">Settings</h2>
+
+<input id="apiKey" placeholder="OpenRouter API Key"
+class="w-full border p-2 rounded">
+
+<input id="modelName" placeholder="Model (example: deepseek/deepseek-chat)"
+class="w-full border p-2 rounded">
+
+<button id="saveSettings" class="bg-blue-600 text-white px-4 py-2 rounded w-full">
+Save
+</button>
+
+</div>
+</div>
+
+
+<script>
+
+const SYSTEM_PROMPT = `
+You are a friendly AI assistant.
+Always reply in Hinglish (Hindi + English mix).
+
+If anyone asks:
+"tumhe kisne banaya"
+"who created you"
+"who made you"
+"tumhara creator kaun hai"
+
+Then reply:
+"Mujhe Shivam ne banaya hai."
+`
+
+
+let chats = JSON.parse(localStorage.getItem("chats") || "[]")
+let currentChat = null
+
+const chatBox = document.getElementById("chat")
+const historyBox = document.getElementById("history")
+
+function saveChats(){
+localStorage.setItem("chats", JSON.stringify(chats))
+}
+
+function renderHistory(){
+historyBox.innerHTML=""
+chats.forEach((chat,i)=>{
+let btn=document.createElement("button")
+btn.className="w-full text-left bg-gray-800 p-2 rounded"
+btn.innerText=chat.title || "Chat "+(i+1)
+btn.onclick=()=>loadChat(i)
+historyBox.appendChild(btn)
+})
+}
+
+function loadChat(i){
+currentChat=i
+chatBox.innerHTML=""
+chats[i].messages.forEach(m=>{
+addMessage(m.role,m.content)
+})
+}
+
+function newChat(){
+let chat={title:"New Chat",messages:[]}
+chats.push(chat)
+saveChats()
+renderHistory()
+loadChat(chats.length-1)
+}
+
+document.getElementById("newChat").onclick=newChat
+
+function addMessage(role,text){
+let div=document.createElement("div")
+div.className= role=="user" ? 
+"text-right" :
+"text-left"
+
+div.innerHTML=`
+<div class="inline-block px-4 py-2 rounded
+${role=="user"?"bg-blue-500 text-white":"bg-gray-200"}">
+${text}
+</div>
+`
+chatBox.appendChild(div)
+chatBox.scrollTop=chatBox.scrollHeight
+}
+
+async function sendMessage(){
+
+let input=document.getElementById("messageInput")
+let text=input.value.trim()
+if(!text) return
+
+addMessage("user",text)
+
+chats[currentChat].messages.push({
+role:"user",
+content:text
+})
+
+input.value=""
+
+let apiKey=localStorage.getItem("openrouter_api")
+let model=localStorage.getItem("model_name") || "deepseek/deepseek-chat"
+
+addMessage("assistant","Soch raha hu...")
+
+try{
+
+let res=await fetch("https://openrouter.ai/api/v1/chat/completions",{
+method:"POST",
+headers:{
+"Authorization":"Bearer "+apiKey,
+"Content-Type":"application/json"
+},
+body:JSON.stringify({
+model:model,
+messages:[
+{role:"system",content:SYSTEM_PROMPT},
+...chats[currentChat].messages
+]
+})
+})
+
+let data=await res.json()
+
+let reply=data.choices[0].message.content
+
+chatBox.lastChild.remove()
+
+addMessage("assistant",reply)
+
+chats[currentChat].messages.push({
+role:"assistant",
+content:reply
+})
+
+saveChats()
+
+}catch(e){
+
+chatBox.lastChild.remove()
+addMessage("assistant","Error: "+e.message)
+
+}
+
+}
+
+document.getElementById("sendBtn").onclick=sendMessage
+
+document.getElementById("messageInput")
+.addEventListener("keypress",e=>{
+if(e.key==="Enter") sendMessage()
+})
+
+
+document.getElementById("openSettings").onclick=()=>{
+document.getElementById("settingsModal").classList.remove("hidden")
+document.getElementById("settingsModal").classList.add("flex")
+
+document.getElementById("apiKey").value=
+localStorage.getItem("openrouter_api") || ""
+
+document.getElementById("modelName").value=
+localStorage.getItem("model_name") || ""
+}
+
+document.getElementById("saveSettings").onclick=()=>{
+
+localStorage.setItem("openrouter_api",
+document.getElementById("apiKey").value)
+
+localStorage.setItem("model_name",
+document.getElementById("modelName").value)
+
+document.getElementById("settingsModal").classList.add("hidden")
+}
+
+
+
+renderHistory()
+
+if(chats.length===0){
+newChat()
+}else{
+loadChat(0)
+}
+
+</script>
+
+</body>
+  </html>
